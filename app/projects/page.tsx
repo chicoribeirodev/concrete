@@ -143,13 +143,8 @@ export default function ProjectsPage() {
                 Projects
               </p>
               <h1 className="mt-3 text-3xl font-semibold tracking-tight">
-                Upload a GeoJSON project
+                Create a new project
               </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-600">
-                Choose a GeoJSON file to inspect its features, geometry types, and
-                properties directly in the app.
-              </p>
-
               <div className="mt-8 flex flex-wrap items-center gap-3 text-xs font-semibold uppercase tracking-[0.3em] text-zinc-500">
                 <div className={`rounded-full border px-3 py-1.5 ${currentStep === "upload" ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300"}`}>
                   Step 1 • Upload

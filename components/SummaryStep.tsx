@@ -37,7 +37,6 @@ export default function SummaryStep({
           Continue to map
         </button>
       </div>
-
       <div className="rounded-2xl border border-zinc-200 bg-white p-6">
         <dl className="space-y-3 text-sm text-zinc-700">
           <div className="flex items-center justify-between gap-4">
