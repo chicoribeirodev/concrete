@@ -5,6 +5,7 @@ import LeafletMap from "@/components/LeafletMap";
 import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
 import { point } from "@turf/helpers";
 import portugalMunicipalitiesGeoJSON from "../data/portugal_municipalities.json";
+import { formatDistance, formatHectares } from "@/lib/format";
 
 type MapStepProps = {
   mapPreview: FeatureCollection | null;
@@ -287,31 +288,6 @@ function getBoundaryStats(mapPreview: FeatureCollection | null): BoundaryStats {
   };
 }
 
-// --- Dynamic Unit Formatting Helpers ---
-
-function formatDistance(km: number | null): string {
-  if (km === null || isNaN(km)) return "—";
-  if (km < 1) {
-    const meters = km * 1000;
-    return `${meters.toFixed(0)} m`;
-  }
-  return `${km.toFixed(1)} km`;
-}
-
-function formatArea(km2: number | null): string {
-  if (km2 === null || isNaN(km2)) return "—";
-  const m2 = km2 * 1_000_000;
-
-  if (m2 < 10000) {
-    return `${m2.toFixed(0)} m²`;
-  }
-  if (km2 < 1) {
-    const hectares = m2 / 10000;
-    return `${hectares.toFixed(1)} ha`;
-  }
-  return `${km2.toFixed(1)} km²`;
-}
-
 export default function MapStep({ mapPreview, isClient }: MapStepProps) {
   const stats = getBoundaryStats(mapPreview);
 
@@ -361,7 +337,7 @@ export default function MapStep({ mapPreview, isClient }: MapStepProps) {
               Area
             </p>
             <p className="mt-2 text-sm font-medium text-zinc-900">
-              {formatArea(stats.areaKm2)}
+              {formatHectares(stats.areaKm2)}
             </p>
           </div>
           <div className="rounded-xl border border-zinc-200 bg-white p-3">

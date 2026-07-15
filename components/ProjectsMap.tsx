@@ -1,12 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect } from "react";
+import { Fragment, useEffect } from "react";
+import type { Feature, MultiPolygon, Polygon } from "geojson";
 
 type MapProject = {
   id: string;
   name: string;
   center: { lat: number; lng: number };
+  boundary?: Feature<Polygon | MultiPolygon> | null;
 };
 
 type ProjectsMapProps = {
@@ -14,11 +16,17 @@ type ProjectsMapProps = {
 };
 
 const PORTUGAL_CENTER: [number, number] = [39.5, -8.0];
+const BOUNDARY_STYLE = {
+  color: "#2563eb",
+  weight: 2,
+  fillColor: "#2563eb",
+  fillOpacity: 0.12,
+};
 
 const MapContent = dynamic(
   async () => {
     const mod = await import("react-leaflet");
-    const { MapContainer, TileLayer, Marker, Popup, useMap } = mod;
+    const { MapContainer, TileLayer, Marker, Popup, GeoJSON, useMap } = mod;
     const L = (await import("leaflet")).default;
 
     delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
@@ -63,9 +71,15 @@ const MapContent = dynamic(
         }
 
         const L = require("leaflet") as typeof import("leaflet");
-        const bounds = L.latLngBounds(
-          projects.map((project) => [project.center.lat, project.center.lng])
-        );
+        const bounds = L.latLngBounds([]);
+
+        projects.forEach((project) => {
+          if (project.boundary) {
+            bounds.extend(L.geoJSON(project.boundary as never).getBounds());
+          } else {
+            bounds.extend([project.center.lat, project.center.lng]);
+          }
+        });
 
         if (bounds.isValid()) {
           map.fitBounds(bounds, { padding: [32, 32], maxZoom: 12 });
@@ -89,9 +103,14 @@ const MapContent = dynamic(
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
             {projects.map((project) => (
-              <Marker key={project.id} position={[project.center.lat, project.center.lng]}>
-                <Popup>{project.name}</Popup>
-              </Marker>
+              <Fragment key={project.id}>
+                {project.boundary ? (
+                  <GeoJSON data={project.boundary as never} style={BOUNDARY_STYLE} />
+                ) : null}
+                <Marker position={[project.center.lat, project.center.lng]}>
+                  <Popup>{project.name}</Popup>
+                </Marker>
+              </Fragment>
             ))}
             <ResizeHandler />
             <FitBoundsHandler projects={projects} />
