@@ -4,6 +4,7 @@ import Navigation from "@/components/Navigation";
 import ProjectsMap from "@/components/ProjectsMap";
 import { projects } from "@/data/projects";
 import { formatArea, formatDistance } from "@/lib/format";
+import { findPdmSource } from "@/lib/pdm-sources";
 
 export default async function ProjectPage({
   params,
@@ -16,6 +17,9 @@ export default async function ProjectPage({
   if (!project) {
     notFound();
   }
+
+  const pdmSource = findPdmSource(project.municipality);
+  const pdmAvailable = pdmSource?.type === "wms";
 
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900">
@@ -40,9 +44,36 @@ export default async function ProjectPage({
                     {project.name}
                   </h1>
                 </div>
-                <span className="rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-zinc-600">
-                  {project.status}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-zinc-600">
+                    {project.status}
+                  </span>
+                  <a
+                    href={`/api/planta-sig?projectId=${project.id}&format=pdf`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-full bg-zinc-900 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:bg-zinc-700"
+                  >
+                    Generate Location Plan
+                  </a>
+                  {pdmAvailable ? (
+                    <a
+                      href={`/api/pdm-extrato?projectId=${project.id}&format=pdf`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-full bg-zinc-900 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:bg-zinc-700"
+                    >
+                      Generate PDM Extract
+                    </a>
+                  ) : (
+                    <span
+                      title={pdmSource?.type === "unavailable" ? pdmSource.reason : undefined}
+                      className="cursor-not-allowed rounded-full border border-zinc-300 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-zinc-400"
+                    >
+                      PDM Extract Unavailable
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
