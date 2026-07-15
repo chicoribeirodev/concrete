@@ -1,180 +1,102 @@
 "use client";
 
-import type { ChangeEvent } from "react";
 import { useEffect, useState } from "react";
-import type { Feature, FeatureCollection } from "geojson";
-import MapStep from "@/components/MapStep";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Navigation from "@/components/Navigation";
-import SummaryStep from "@/components/SummaryStep";
-import UploadStep from "@/components/UploadStep";
-
-type GeoJsonFeature = {
-  type: "Feature";
-  geometry?: Record<string, unknown> | null;
-  properties?: Record<string, unknown> | null;
-};
-
-type GeoJsonSummary = {
-  fileName: string;
-  featureCount: number;
-  geometryTypes: string[];
-  propertyKeys: string[];
-  previewFeatures: Array<{
-    title: string;
-    geometryType: string;
-  }>;
-};
-
-function buildSummary(parsed: unknown, fileName: string): GeoJsonSummary | null {
-  if (!parsed || typeof parsed !== "object") {
-    return null;
-  }
-
-  const record = parsed as Record<string, unknown>;
-  const features = Array.isArray(record.features)
-    ? (record.features as GeoJsonFeature[])
-    : record.type === "Feature"
-      ? [record as GeoJsonFeature]
-      : [];
-
-  if (record.type !== "FeatureCollection" && record.type !== "Feature") {
-    return null;
-  }
-
-  const geometryTypes = features
-    .map((feature) => feature.geometry?.type)
-    .filter((type): type is string => typeof type === "string");
-
-  const propertyKeys = Array.from(
-    new Set(
-      features.flatMap((feature) =>
-        Object.keys((feature.properties as Record<string, unknown>) ?? {})
-      )
-    )
-  );
-
-  return {
-    fileName,
-    featureCount: features.length,
-    geometryTypes: geometryTypes.length > 0 ? geometryTypes : ["No geometry"],
-    propertyKeys,
-    previewFeatures: features.slice(0, 5).map((feature, index) => ({
-      title: `Feature ${index + 1}`,
-      geometryType: typeof feature.geometry?.type === "string" ? feature.geometry.type : "Unknown",
-    })),
-  };
-}
-
-function buildMapPreview(parsed: unknown): FeatureCollection | null {
-  if (!parsed || typeof parsed !== "object") {
-    return null;
-  }
-
-  const record = parsed as Record<string, unknown>;
-  const features = Array.isArray(record.features)
-    ? (record.features as GeoJsonFeature[])
-    : record.type === "Feature"
-      ? [record as GeoJsonFeature]
-      : [];
-
-  if (record.type !== "FeatureCollection" && record.type !== "Feature") {
-    return null;
-  }
-
-  return {
-    type: "FeatureCollection",
-    features: features.map((feature) => ({
-      type: "Feature",
-      geometry: (feature.geometry as unknown as Feature["geometry"]) ?? null,
-      properties: feature.properties ?? {},
-    })),
-  } as FeatureCollection;
-}
+import ProjectsMap from "@/components/ProjectsMap";
+import { projects } from "@/data/projects";
 
 export default function ProjectsPage() {
-  const [summary, setSummary] = useState<GeoJsonSummary | null>(null);
-  const [mapPreview, setMapPreview] = useState<FeatureCollection | null>(null);
-  const [currentStep, setCurrentStep] = useState<"upload" | "summary" | "map">("upload");
-  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
-  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    try {
-      const text = await file.text();
-      const parsed = JSON.parse(text) as unknown;
-      const nextSummary = buildSummary(parsed, file.name);
-
-      if (!nextSummary) {
-        throw new Error("The selected file is not a valid GeoJSON document.");
-      }
-
-      setSummary(nextSummary);
-      setMapPreview(buildMapPreview(parsed));
-      setCurrentStep("summary");
-      setError(null);
-    } catch (err) {
-      setSummary(null);
-      setMapPreview(null);
-      setCurrentStep("upload");
-      setError(
-        err instanceof Error ? err.message : "We could not read that file."
-      );
-    }
-  };
-
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900">
       <div className="flex min-h-screen">
         <Navigation />
         <main className="flex-1 bg-zinc-50 p-8 lg:p-12">
-          <div className="mx-auto max-w-5xl">
+          <div className="mx-auto max-w-7xl">
             <div className="rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
-              <p className="text-sm font-semibold uppercase tracking-[0.3em] text-zinc-500">
-                Projects
-              </p>
-              <h1 className="mt-3 text-3xl font-semibold tracking-tight">
-                Create a new project
-              </h1>
-              <div className="mt-8 flex flex-wrap items-center gap-3 text-xs font-semibold uppercase tracking-[0.3em] text-zinc-500">
-                <div className={`rounded-full border px-3 py-1.5 ${currentStep === "upload" ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300"}`}>
-                  Step 1 • Upload
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-[0.3em] text-zinc-500">
+                    Projects
+                  </p>
+                  <h1 className="mt-3 text-3xl font-semibold tracking-tight">
+                    All projects
+                  </h1>
                 </div>
-                <div className={`rounded-full border px-3 py-1.5 ${currentStep === "summary" ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300"}`}>
-                  Step 2 • Summary
+                <Link
+                  href="/projects/create"
+                  className="rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-700"
+                >
+                  New project
+                </Link>
+              </div>
+              <div className="mt-8 grid gap-6 lg:grid-cols-5">
+                <div className="lg:col-span-3">
+                  {projects.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-12 text-center">
+                      <p className="text-sm font-medium text-zinc-600">
+                        No projects yet.
+                      </p>
+                      <p className="mt-1 text-sm text-zinc-500">
+                        Create your first project to get started.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="overflow-hidden rounded-xl border border-zinc-200">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-zinc-50 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                          <tr>
+                            <th className="px-4 py-3">Name</th>
+                            <th className="px-4 py-3">Status</th>
+                            <th className="px-4 py-3">Center</th>
+                            <th className="px-4 py-3">Last updated</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-200">
+                          {projects.map((project) => (
+                            <tr
+                              key={project.id}
+                              onClick={() => router.push(`/projects/${project.id}`)}
+                              className="cursor-pointer hover:bg-zinc-50"
+                            >
+                              <td className="px-4 py-3 font-medium text-zinc-900">
+                                <Link
+                                  href={`/projects/${project.id}`}
+                                  className="hover:underline"
+                                >
+                                  {project.name}
+                                </Link>
+                              </td>
+                              <td className="px-4 py-3 text-zinc-600">
+                                {project.status}
+                              </td>
+                              <td className="px-4 py-3 text-zinc-600">
+                                {project.center.lat.toFixed(4)}, {project.center.lng.toFixed(4)}
+                              </td>
+                              <td className="px-4 py-3 text-zinc-600">
+                                {project.updatedAt}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
-                <div className={`rounded-full border px-3 py-1.5 ${currentStep === "map" ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300"}`}>
-                  Step 3 • Confirm on Map
+                <div className="lg:col-span-2">
+                  <div className="h-[420px] overflow-hidden rounded-xl border border-zinc-200 lg:sticky lg:top-8 lg:h-[560px]">
+                    {isClient ? <ProjectsMap projects={projects} /> : null}
+                  </div>
                 </div>
               </div>
-
-              {!summary ? (
-                <div className="mt-6">
-                  <UploadStep onFileSelect={handleFileChange} error={error} />
-                </div>
-              ) : currentStep === "summary" ? (
-                <div className="mt-6">
-                  <SummaryStep
-                    summary={summary}
-                    mapPreview={mapPreview}
-                    isClient={isClient}
-                    onContinue={() => setCurrentStep("map")}
-                  />
-                </div>
-              ) : (
-                <div className="mt-6">
-                  <MapStep mapPreview={mapPreview} isClient={isClient} />
-                </div>
-              )}
             </div>
           </div>
         </main>
