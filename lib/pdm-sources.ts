@@ -1,13 +1,19 @@
 // lib/pdm-sources.ts
 //
 // Per-municipality source config for PDM (Plano Diretor Municipal) "Planta
-// de Ordenamento" extracts. Portugal has no single national WMS for this —
-// each câmara municipal runs its own geoportal, on its own domain, with its
-// own layer names. This table is deliberately small: only municipalities
-// with a verified, working public WMS are wired up as "wms"; everything
-// else is "unavailable" with the reason, so the route fails with a clear
-// message instead of a broken request. Extend as more municipalities are
-// confirmed.
+// de Ordenamento" extracts. Each câmara municipal runs its own geoportal, on
+// its own domain, with its own layer names — but every PDM is also filed
+// with DGT (Direção-Geral do Território) and mirrored on their national
+// SNIT WMS (servicos.dgterritorio.pt/SDISNITWMSPDM1_<município>_<plano>_<rev>),
+// which is what several entries below use instead of the municipal source.
+// That DGT service is a shared, overloaded legacy map-server pool — expect
+// GetMap requests to take from seconds up to a few minutes, and occasionally
+// fail with a transient capacity error; fetchWmsImage (lib/gis.ts) retries
+// with a generous timeout to absorb that. This table is deliberately small:
+// only municipalities with a verified, working public WMS are wired up as
+// "wms"; everything else is "unavailable" with the reason, so the route
+// fails with a clear message instead of a broken request. Extend as more
+// municipalities are confirmed.
 
 export type PdmSource =
   | {
@@ -39,22 +45,25 @@ export const PDM_SOURCES: Record<string, PdmSource> = {
     layer: "Planta_de_Ordenamento_-_1_-_Qualificacao_do_Espaco_Urbano",
   },
   Porto: {
-    type: "unavailable",
+    type: "wms",
     municipality: "Porto",
-    reason:
-      "O geoportal do Porto expõe a Planta de Ordenamento via ArcGIS REST, mas sem a extensão WMS ativa.",
+    planLabel: "PDM Porto — Planta de Ordenamento (Qualificação do Solo)",
+    baseUrl: "https://servicos.dgterritorio.pt/SDISNITWMSPDM1_1312_3027_3/wmservice.aspx",
+    layer: "Planta_de_Ordenamento_-_1A_-_Qualificacao_do_Solo",
   },
   Coimbra: {
-    type: "unavailable",
+    type: "wms",
     municipality: "Coimbra",
-    reason:
-      "O geoportal de Coimbra expõe a Planta de Ordenamento via ArcGIS REST, mas sem a extensão WMS ativa.",
+    planLabel: "PDM Coimbra — Planta de Ordenamento (Classificação e Qualificação do Solo)",
+    baseUrl: "https://servicos.dgterritorio.pt/SDISNITWMSPDM1_0603_2672_2/wmservice.aspx",
+    layer: "Planta_de_Ordenamento_-_01_01_-_Classificacao_e_Qualificacao_do_Solo",
   },
   "Peso da Régua": {
-    type: "unavailable",
+    type: "wms",
     municipality: "Peso da Régua",
-    reason:
-      "O geoportal do município (i3geo) está online, mas não tem a Planta de Ordenamento publicada como camada WMS.",
+    planLabel: "PDM Peso da Régua — Planta de Ordenamento",
+    baseUrl: "https://servicos.dgterritorio.pt/sdisnitWMSPDM1_1708_257_2/wmservice.aspx",
+    layer: "Planta_de_Ordenamento",
   },
 };
 
