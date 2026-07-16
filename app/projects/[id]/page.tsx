@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Navigation from "@/components/Navigation";
+import PdmExtractButton from "@/components/PdmExtractButton";
 import ProjectsMap from "@/components/ProjectsMap";
 import { projects } from "@/data/projects";
 import { formatArea, formatDistance } from "@/lib/format";
@@ -57,14 +58,7 @@ export default async function ProjectPage({
                     Generate Location Plan
                   </a>
                   {pdmAvailable ? (
-                    <a
-                      href={`/api/pdm-extrato?projectId=${project.id}&format=pdf`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rounded-full bg-zinc-900 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:bg-zinc-700"
-                    >
-                      Generate PDM Extract
-                    </a>
+                    <PdmExtractButton projectId={project.id} />
                   ) : (
                     <span
                       title={pdmSource?.type === "unavailable" ? pdmSource.reason : undefined}

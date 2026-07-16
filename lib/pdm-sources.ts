@@ -32,10 +32,11 @@ export const PDM_SOURCES: Record<string, PdmSource> = {
     layer: "1_1_P_Ordenamento_MOT",
   },
   Lisboa: {
-    type: "unavailable",
+    type: "wms",
     municipality: "Lisboa",
-    reason:
-      "O serviço SIG do PDM de Lisboa (MuniSIG_Secure) exige autenticação e não expõe WMS público.",
+    planLabel: "PDM Lisboa — Planta de Ordenamento (Qualificação do Espaço Urbano)",
+    baseUrl: "https://servicos.dgterritorio.pt/SDISNITWMSPDM1_1106_1815_2/wmservice.aspx",
+    layer: "Planta_de_Ordenamento_-_1_-_Qualificacao_do_Espaco_Urbano",
   },
   Porto: {
     type: "unavailable",

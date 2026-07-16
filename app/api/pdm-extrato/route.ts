@@ -28,6 +28,10 @@ import { findPdmSource } from "@/lib/pdm-sources";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// The DGT/SNIT WMS mirror used for Lisboa can take minutes per attempt and
+// fetchWmsImage retries on failure (see lib/gis.ts) — give this route enough
+// headroom on platforms that enforce maxDuration.
+export const maxDuration = 1800;
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -151,13 +155,21 @@ async function fetchLegendGraphic(baseUrl: string, layer: string): Promise<Buffe
   url.searchParams.set("FORMAT", "image/png");
   url.searchParams.set("LAYER", layer);
 
+  // Purely cosmetic — never worth waiting minutes on a slow geoportal for
+  // this, so it gets a short timeout instead of the retry policy in
+  // fetchWmsImage and just gets dropped from the extract on failure.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
   try {
-    const res = await fetch(url.toString());
+    const res = await fetch(url.toString(), { signal: controller.signal });
     if (!res.ok) return undefined;
     const contentType = res.headers.get("content-type") ?? "";
     if (!contentType.startsWith("image/")) return undefined;
     return Buffer.from(await res.arrayBuffer());
   } catch {
     return undefined;
+  } finally {
+    clearTimeout(timeout);
   }
 }

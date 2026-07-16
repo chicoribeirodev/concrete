@@ -170,6 +170,20 @@ export function infoOverlaySvg(params: {
 </svg>`;
 }
 
+// Some geoportais (e.g. the DGT/SNIT national WMS mirror used for Lisboa)
+// run on an overloaded legacy map-server pool: a single GetMap request can
+// take minutes and occasionally fails with a transient capacity error
+// ("Map Server Manager timed out waiting for a free Map Server"). Retrying
+// with a generous per-attempt timeout is the only way to get a reliable
+// image out of those sources.
+const WMS_ATTEMPT_TIMEOUT_MS = 4 * 60 * 1000;
+const WMS_MAX_ATTEMPTS = 6;
+const WMS_RETRY_DELAY_MS = 5000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function fetchWmsImage(params: {
   baseUrl: string;
   layers: string;
@@ -202,23 +216,36 @@ export async function fetchWmsImage(params: {
   }
 
   const url = `${baseUrl}?${query.toString()}`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
 
-  try {
-    const res = await fetch(url, { signal: controller.signal });
-    if (!res.ok) {
-      throw new Error(`Pedido WMS falhou (${res.status}) em ${baseUrl}`);
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= WMS_MAX_ATTEMPTS; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), WMS_ATTEMPT_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok) {
+        throw new Error(`Pedido WMS falhou (${res.status}) em ${baseUrl}`);
+      }
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.startsWith("image/")) {
+        const text = await res.text();
+        throw new Error(`Serviço WMS devolveu um erro em vez de imagem: ${text.slice(0, 300)}`);
+      }
+      return Buffer.from(await res.arrayBuffer());
+    } catch (error) {
+      lastError = error;
+      if (attempt < WMS_MAX_ATTEMPTS) {
+        await sleep(WMS_RETRY_DELAY_MS);
+      }
+    } finally {
+      clearTimeout(timeout);
     }
-    const contentType = res.headers.get("content-type") ?? "";
-    if (!contentType.startsWith("image/")) {
-      const text = await res.text();
-      throw new Error(`Serviço WMS devolveu um erro em vez de imagem: ${text.slice(0, 300)}`);
-    }
-    return Buffer.from(await res.arrayBuffer());
-  } finally {
-    clearTimeout(timeout);
   }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Pedido WMS falhou em ${baseUrl} após ${WMS_MAX_ATTEMPTS} tentativas.`);
 }
 
 export async function embedImageAsA4Pdf(
