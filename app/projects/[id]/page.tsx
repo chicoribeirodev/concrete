@@ -21,7 +21,7 @@ export default async function ProjectPage({
   }
 
   const pdmSource = findPdmSource(project.municipality);
-  const pdmAvailable = pdmSource?.type === "wms";
+  const pdmWmsSource = pdmSource?.type === "wms" ? pdmSource : undefined;
 
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900">
@@ -58,8 +58,12 @@ export default async function ProjectPage({
                   >
                     Generate Location Plan
                   </a>
-                  {pdmAvailable ? (
-                    <PdmExtractButton projectId={project.id} />
+                  {pdmWmsSource ? (
+                    <PdmExtractButton
+                      projectId={project.id}
+                      municipality={pdmWmsSource.municipality}
+                      defaultLayer={pdmWmsSource.layer}
+                    />
                   ) : (
                     <span
                       title={pdmSource?.type === "unavailable" ? pdmSource.reason : undefined}
@@ -126,7 +130,7 @@ export default async function ProjectPage({
                 <ProjectsMap projects={[project]} />
               </div>
             </div>
-            {pdmAvailable ? (
+            {pdmWmsSource ? (
               <PdmCapabilitiesSection municipality={project.municipality} />
             ) : null}
           </div>

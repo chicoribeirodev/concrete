@@ -1,6 +1,6 @@
 // app/api/pdm-extrato/route.ts
 //
-// GET /api/pdm-extrato?projectId=1&format=pdf
+// GET /api/pdm-extrato?projectId=1&format=pdf&layers=layerA,layerB
 //
 // Gera um extrato da Planta de Ordenamento do PDM (Plano Diretor Municipal)
 // do município de um projeto, enquadrado no limite do prédio, a partir do
@@ -11,20 +11,30 @@
 // municípios confirmados em lib/pdm-sources.ts; para os restantes devolve
 // 501 com o motivo, em vez de tentar adivinhar um endpoint.
 //
+// `layers` é opcional e vem do seletor de camadas em PdmExtractModal (lista
+// obtida via /api/capabilities): uma lista separada por vírgulas de nomes de
+// camada WMS a desenhar no lugar da camada única configurada em
+// PDM_SOURCES. Em `format=pdf`, cada camada fica na sua própria página, com
+// a sua própria legenda — não sobrepostas na mesma imagem — para que fiquem
+// legíveis mesmo quando os estilos das camadas se sobrepõem visualmente. Em
+// `format=png` (uma única imagem, não paginável) só a primeira camada
+// selecionada é desenhada.
+//
 // Esta rota tem de correr no runtime Node.js (sharp e pdf-lib não correm em
 // Edge).
 
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
-import { projects } from "@/data/projects";
+import { projects, type Project } from "@/data/projects";
 import {
   boundaryOverlaySvg,
   canvasForBoundary,
-  embedImageAsA4Pdf,
+  embedImagesAsA4Pdf,
   fetchWmsImage,
   infoOverlaySvg,
+  type MapCanvas,
 } from "@/lib/gis";
-import { findPdmSource } from "@/lib/pdm-sources";
+import { findPdmSource, type PdmSource } from "@/lib/pdm-sources";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,21 +75,13 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const layersParam = searchParams.get("layers");
+  const layerNames = layersParam?.trim()
+    ? layersParam.split(",").map((name) => name.trim()).filter(Boolean)
+    : [source.layer];
+
   try {
     const canvas = canvasForBoundary(project.boundary);
-
-    const [planBuffer, legendBuffer] = await Promise.all([
-      fetchWmsImage({
-        baseUrl: source.baseUrl,
-        layers: source.layer,
-        bbox: canvas.bbox,
-        width: canvas.width,
-        height: canvas.height,
-        transparent: false,
-        format: "image/png",
-      }),
-      fetchLegendGraphic(source.baseUrl, source.layer),
-    ]);
 
     const boundarySvg = boundaryOverlaySvg({
       boundary: project.boundary,
@@ -90,36 +92,14 @@ export async function GET(request: NextRequest) {
       fill: "#1565c026",
     });
 
-    const infoSvg = infoOverlaySvg({
-      width: canvas.width,
-      height: canvas.height,
-      metersPerPixel: canvas.metersPerPixel,
-      title: "Extrato do PDM — Planta de Ordenamento",
-      lines: [project.name, source.planLabel],
-    });
-
-    const composite = [
-      { input: Buffer.from(boundarySvg), top: 0, left: 0 },
-      { input: Buffer.from(infoSvg), top: 0, left: 0 },
-    ];
-
-    if (legendBuffer) {
-      const legendMeta = await sharp(legendBuffer).metadata();
-      const legendWidth = Math.min(legendMeta.width ?? 200, 220);
-      const resizedLegend = await sharp(legendBuffer).resize({ width: legendWidth }).toBuffer();
-      composite.push({
-        input: resizedLegend,
-        top: 8,
-        left: canvas.width - legendWidth - 8,
-      });
-    }
-
-    const composed = await sharp(planBuffer)
-      .composite(composite)
-      .png()
-      .toBuffer();
-
     if (formatParam === "png") {
+      const composed = await composeLayerImage({
+        source,
+        layerName: layerNames[0],
+        canvas,
+        boundarySvg,
+        project,
+      });
       return new NextResponse(new Uint8Array(composed), {
         headers: {
           "Content-Type": "image/png",
@@ -128,7 +108,15 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const pdfBytes = await embedImageAsA4Pdf(composed, canvas.width, canvas.height);
+    const pages = await Promise.all(
+      layerNames.map(async (layerName) => ({
+        png: await composeLayerImage({ source, layerName, canvas, boundarySvg, project }),
+        width: canvas.width,
+        height: canvas.height,
+      }))
+    );
+
+    const pdfBytes = await embedImagesAsA4Pdf(pages);
     return new NextResponse(new Uint8Array(pdfBytes), {
       headers: {
         "Content-Type": "application/pdf",
@@ -145,6 +133,57 @@ export async function GET(request: NextRequest) {
       { status: 502 }
     );
   }
+}
+
+// Renders a single WMS layer into the map canvas, with the project boundary
+// and its own legend composited on top — one call per page of the PDF.
+async function composeLayerImage(params: {
+  source: Extract<PdmSource, { type: "wms" }>;
+  layerName: string;
+  canvas: MapCanvas;
+  boundarySvg: string;
+  project: Project;
+}): Promise<Buffer> {
+  const { source, layerName, canvas, boundarySvg, project } = params;
+
+  const [planBuffer, legendBuffer] = await Promise.all([
+    fetchWmsImage({
+      baseUrl: source.baseUrl,
+      layers: layerName,
+      bbox: canvas.bbox,
+      width: canvas.width,
+      height: canvas.height,
+      transparent: false,
+      format: "image/png",
+    }),
+    fetchLegendGraphic(source.baseUrl, layerName),
+  ]);
+
+  const infoSvg = infoOverlaySvg({
+    width: canvas.width,
+    height: canvas.height,
+    metersPerPixel: canvas.metersPerPixel,
+    title: "Extrato do PDM — Planta de Ordenamento",
+    lines: [project.name, source.planLabel, layerName],
+  });
+
+  const composite = [
+    { input: Buffer.from(boundarySvg), top: 0, left: 0 },
+    { input: Buffer.from(infoSvg), top: 0, left: 0 },
+  ];
+
+  if (legendBuffer) {
+    const legendMeta = await sharp(legendBuffer).metadata();
+    const legendWidth = Math.min(legendMeta.width ?? 200, 220);
+    const resizedLegend = await sharp(legendBuffer).resize({ width: legendWidth }).toBuffer();
+    composite.push({
+      input: resizedLegend,
+      top: 8,
+      left: canvas.width - legendWidth - 8,
+    });
+  }
+
+  return sharp(planBuffer).composite(composite).png().toBuffer();
 }
 
 async function fetchLegendGraphic(baseUrl: string, layer: string): Promise<Buffer | undefined> {

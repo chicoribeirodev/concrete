@@ -248,32 +248,43 @@ export async function fetchWmsImage(params: {
     : new Error(`Pedido WMS falhou em ${baseUrl} após ${WMS_MAX_ATTEMPTS} tentativas.`);
 }
 
+// One A4 page per image, e.g. for a PDM extract with one page per selected
+// WMS layer (each with its own legend already baked into the PNG).
+export async function embedImagesAsA4Pdf(
+  images: { png: Buffer; width: number; height: number }[]
+): Promise<Uint8Array> {
+  const pdfDoc = await PDFDocument.create();
+
+  for (const { png, width, height } of images) {
+    const page = pdfDoc.addPage([595.28, 841.89]); // A4 em pontos
+    const pngImage = await pdfDoc.embedPng(png);
+
+    const margin = 30;
+    const availableWidth = page.getWidth() - margin * 2;
+    const availableHeight = page.getHeight() - margin * 2;
+    const imgRatio = width / height;
+    let drawWidth = availableWidth;
+    let drawHeight = drawWidth / imgRatio;
+    if (drawHeight > availableHeight) {
+      drawHeight = availableHeight;
+      drawWidth = drawHeight * imgRatio;
+    }
+
+    page.drawImage(pngImage, {
+      x: (page.getWidth() - drawWidth) / 2,
+      y: (page.getHeight() - drawHeight) / 2,
+      width: drawWidth,
+      height: drawHeight,
+    });
+  }
+
+  return pdfDoc.save();
+}
+
 export async function embedImageAsA4Pdf(
   png: Buffer,
   imageWidth: number,
   imageHeight: number
 ): Promise<Uint8Array> {
-  const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([595.28, 841.89]); // A4 em pontos
-  const pngImage = await pdfDoc.embedPng(png);
-
-  const margin = 30;
-  const availableWidth = page.getWidth() - margin * 2;
-  const availableHeight = page.getHeight() - margin * 2;
-  const imgRatio = imageWidth / imageHeight;
-  let drawWidth = availableWidth;
-  let drawHeight = drawWidth / imgRatio;
-  if (drawHeight > availableHeight) {
-    drawHeight = availableHeight;
-    drawWidth = drawHeight * imgRatio;
-  }
-
-  page.drawImage(pngImage, {
-    x: (page.getWidth() - drawWidth) / 2,
-    y: (page.getHeight() - drawHeight) / 2,
-    width: drawWidth,
-    height: drawHeight,
-  });
-
-  return pdfDoc.save();
+  return embedImagesAsA4Pdf([{ png, width: imageWidth, height: imageHeight }]);
 }
