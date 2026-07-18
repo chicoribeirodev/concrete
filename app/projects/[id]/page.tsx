@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Navigation from "@/components/Navigation";
+import PdmCapabilitiesSection from "@/components/PdmCapabilitiesSection";
 import PdmExtractButton from "@/components/PdmExtractButton";
 import ProjectsMap from "@/components/ProjectsMap";
 import { projects } from "@/data/projects";
@@ -125,6 +126,9 @@ export default async function ProjectPage({
                 <ProjectsMap projects={[project]} />
               </div>
             </div>
+            {pdmAvailable ? (
+              <PdmCapabilitiesSection municipality={project.municipality} />
+            ) : null}
           </div>
         </main>
       </div>

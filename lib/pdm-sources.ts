@@ -68,5 +68,9 @@ export const PDM_SOURCES: Record<string, PdmSource> = {
 };
 
 export function findPdmSource(municipality: string): PdmSource | undefined {
-  return PDM_SOURCES[municipality];
+  if (PDM_SOURCES[municipality]) return PDM_SOURCES[municipality];
+
+  const normalized = municipality.trim().toLowerCase();
+  const key = Object.keys(PDM_SOURCES).find((candidate) => candidate.toLowerCase() === normalized);
+  return key ? PDM_SOURCES[key] : undefined;
 }

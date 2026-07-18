@@ -12,6 +12,7 @@
     "@turf/boolean-point-in-polygon": "^7.3.5",
     "@turf/helpers": "^7.3.5",
     "@types/leaflet": "^1.9.21",
+    "fast-xml-parser": "^5.10.1",
     "leaflet": "^1.9.4",
     "next": "16.2.10",
     "pdf-lib": "^1.17.1",
