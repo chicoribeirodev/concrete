@@ -91,7 +91,7 @@ const MapContent = dynamic(
 
     return function MapContent({ projects }: ProjectsMapProps) {
       return (
-        <div className="h-full min-h-[420px] w-full">
+        <div className="relative z-0 h-full min-h-[420px] w-full">
           <MapContainer
             center={PORTUGAL_CENTER}
             zoom={7}
