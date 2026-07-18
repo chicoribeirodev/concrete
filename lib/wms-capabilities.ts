@@ -2,8 +2,8 @@
 //
 // Fetches and parses GetCapabilities from a PDM source's WMS, so callers can
 // list the layers actually published by that geoportal (name, title,
-// abstract, bounding box) instead of only trusting the hardcoded `layer` in
-// lib/pdm-sources.ts. Shared by /api/capabilities.
+// abstract, bounding box, legend) instead of only trusting the hardcoded
+// `layer` in lib/pdm-sources.ts. Shared by /api/capabilities.
 
 import { XMLParser } from "fast-xml-parser";
 import type { PdmSource } from "@/lib/pdm-sources";
@@ -13,7 +13,21 @@ export type WmsLayerInfo = {
   title?: string;
   abstract?: string;
   bbox?: { minx: number; miny: number; maxx: number; maxy: number; crs?: string };
+  legendUrl?: string;
 };
+
+// Mirrors the GetLegendGraphic request built in app/api/pdm-extrato/route.ts —
+// most geoportals don't advertise a LegendURL in their capabilities, so we
+// construct it directly instead of parsing one out of the XML.
+function buildLegendGraphicUrl(baseUrl: string, layerName: string): string {
+  const url = new URL(baseUrl);
+  url.searchParams.set("SERVICE", "WMS");
+  url.searchParams.set("VERSION", "1.3.0");
+  url.searchParams.set("REQUEST", "GetLegendGraphic");
+  url.searchParams.set("FORMAT", "image/png");
+  url.searchParams.set("LAYER", layerName);
+  return url.toString();
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function collectLayers(node: any, out: WmsLayerInfo[]) {
@@ -78,16 +92,19 @@ export async function fetchWmsLayers(baseUrl: string): Promise<WmsLayerInfo[]> {
 
   const xml = await res.text();
 
-  if (xml.includes("ServiceExceptionReport")) {
-    url.searchParams.set("VERSION", "1.1.1");
-    const retry = await fetch(url.toString(), {
-      headers: { Accept: "application/xml,text/xml,*/*" },
-    });
-    const retryXml = await retry.text();
-    return parseCapabilities(retryXml);
-  }
+  const layers =
+    xml.includes("ServiceExceptionReport")
+      ? await (async () => {
+          url.searchParams.set("VERSION", "1.1.1");
+          const retry = await fetch(url.toString(), {
+            headers: { Accept: "application/xml,text/xml,*/*" },
+          });
+          const retryXml = await retry.text();
+          return parseCapabilities(retryXml);
+        })()
+      : parseCapabilities(xml);
 
-  return parseCapabilities(xml);
+  return layers.map((layer) => ({ ...layer, legendUrl: buildLegendGraphicUrl(baseUrl, layer.name) }));
 }
 
 export async function fetchPdmSourceCapabilities(source: Extract<PdmSource, { type: "wms" }>) {

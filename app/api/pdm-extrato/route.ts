@@ -22,6 +22,10 @@
 //
 // Esta rota tem de correr no runtime Node.js (sharp e pdf-lib não correm em
 // Edge).
+//
+// PDM_EXTRATO_MAX_DURATION (segundos, default 300) controla o tempo limite
+// que esta rota se dá a si própria antes de devolver 504 — ver
+// ROUTE_TIMEOUT_SECONDS abaixo.
 
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
@@ -35,13 +39,44 @@ import {
   type MapCanvas,
 } from "@/lib/gis";
 import { findPdmSource, type PdmSource } from "@/lib/pdm-sources";
+import { fetchWmsLayers } from "@/lib/wms-capabilities";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 // The DGT/SNIT WMS mirror used for Lisboa can take minutes per attempt and
 // fetchWmsImage retries on failure (see lib/gis.ts) — give this route enough
-// headroom on platforms that enforce maxDuration.
+// headroom on platforms that enforce maxDuration. This must stay a literal:
+// Next.js extracts it via static analysis at build time, so it can't read
+// process.env here — see PDM_EXTRATO_MAX_DURATION below for the runtime
+// budget this route actually enforces on itself.
 export const maxDuration = 1800;
+
+// Runtime budget this route gives itself before giving up and returning a
+// 504, independent of the platform-level maxDuration above. Defaults to 300s;
+// set PDM_EXTRATO_MAX_DURATION to override (e.g. 1800 locally, to match slow
+// geoportals during development).
+const ROUTE_TIMEOUT_SECONDS = Number(process.env.PDM_EXTRATO_MAX_DURATION) || 300;
+
+class RouteTimeoutError extends Error {}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new RouteTimeoutError(`Tempo limite de ${ms / 1000}s excedido.`)),
+      ms
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -81,49 +116,20 @@ export async function GET(request: NextRequest) {
     : [source.layer];
 
   try {
-    const canvas = canvasForBoundary(project.boundary);
-
-    const boundarySvg = boundaryOverlaySvg({
-      boundary: project.boundary,
-      bbox: canvas.bbox,
-      width: canvas.width,
-      height: canvas.height,
-      stroke: "#1565c0",
-      fill: "#1565c026",
-    });
-
-    if (formatParam === "png") {
-      const composed = await composeLayerImage({
-        source,
-        layerName: layerNames[0],
-        canvas,
-        boundarySvg,
-        project,
-      });
-      return new NextResponse(new Uint8Array(composed), {
-        headers: {
-          "Content-Type": "image/png",
-          "Content-Disposition": `inline; filename="pdm-extrato-${project.id}.png"`,
-        },
-      });
-    }
-
-    const pages = await Promise.all(
-      layerNames.map(async (layerName) => ({
-        png: await composeLayerImage({ source, layerName, canvas, boundarySvg, project }),
-        width: canvas.width,
-        height: canvas.height,
-      }))
+    return await withTimeout(
+      buildExtratoResponse({ project, source, formatParam, layerNames }),
+      ROUTE_TIMEOUT_SECONDS * 1000
     );
-
-    const pdfBytes = await embedImagesAsA4Pdf(pages);
-    return new NextResponse(new Uint8Array(pdfBytes), {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="pdm-extrato-${project.id}.pdf"`,
-      },
-    });
   } catch (error) {
+    if (error instanceof RouteTimeoutError) {
+      console.error("Tempo limite ao gerar extrato do PDM:", error);
+      return NextResponse.json(
+        {
+          error: `Não foi possível gerar o extrato do PDM dentro do tempo limite (${ROUTE_TIMEOUT_SECONDS}s). O geoportal de ${source.municipality} pode estar demasiado lento.`,
+        },
+        { status: 504 }
+      );
+    }
     console.error("Erro ao gerar extrato do PDM:", error);
     return NextResponse.json(
       {
@@ -135,16 +141,79 @@ export async function GET(request: NextRequest) {
   }
 }
 
+async function buildExtratoResponse(params: {
+  project: Project;
+  source: Extract<PdmSource, { type: "wms" }>;
+  formatParam: string;
+  layerNames: string[];
+}): Promise<NextResponse> {
+  const { project, source, formatParam, layerNames } = params;
+
+  const canvas = canvasForBoundary(project.boundary);
+  const layerTitles = await fetchLayerTitles(source.baseUrl, layerNames);
+
+  const boundarySvg = boundaryOverlaySvg({
+    boundary: project.boundary,
+    bbox: canvas.bbox,
+    width: canvas.width,
+    height: canvas.height,
+    stroke: "#1565c0",
+    fill: "#1565c026",
+  });
+
+  if (formatParam === "png") {
+    const layerName = layerNames[0];
+    const composed = await composeLayerImage({
+      source,
+      layerName,
+      layerTitle: layerTitles.get(layerName) ?? layerName,
+      canvas,
+      boundarySvg,
+      project,
+    });
+    return new NextResponse(new Uint8Array(composed), {
+      headers: {
+        "Content-Type": "image/png",
+        "Content-Disposition": `inline; filename="pdm-extrato-${project.id}.png"`,
+      },
+    });
+  }
+
+  const pages = await Promise.all(
+    layerNames.map(async (layerName) => ({
+      png: await composeLayerImage({
+        source,
+        layerName,
+        layerTitle: layerTitles.get(layerName) ?? layerName,
+        canvas,
+        boundarySvg,
+        project,
+      }),
+      width: canvas.width,
+      height: canvas.height,
+    }))
+  );
+
+  const pdfBytes = await embedImagesAsA4Pdf(pages);
+  return new NextResponse(new Uint8Array(pdfBytes), {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="pdm-extrato-${project.id}.pdf"`,
+    },
+  });
+}
+
 // Renders a single WMS layer into the map canvas, with the project boundary
 // and its own legend composited on top — one call per page of the PDF.
 async function composeLayerImage(params: {
   source: Extract<PdmSource, { type: "wms" }>;
   layerName: string;
+  layerTitle: string;
   canvas: MapCanvas;
   boundarySvg: string;
   project: Project;
 }): Promise<Buffer> {
-  const { source, layerName, canvas, boundarySvg, project } = params;
+  const { source, layerName, layerTitle, canvas, boundarySvg, project } = params;
 
   const [planBuffer, legendBuffer] = await Promise.all([
     fetchWmsImage({
@@ -164,7 +233,7 @@ async function composeLayerImage(params: {
     height: canvas.height,
     metersPerPixel: canvas.metersPerPixel,
     title: "Extrato do PDM — Planta de Ordenamento",
-    lines: [project.name, source.planLabel, layerName],
+    lines: [project.name, source.planLabel, layerTitle],
   });
 
   const composite = [
@@ -210,5 +279,23 @@ async function fetchLegendGraphic(baseUrl: string, layer: string): Promise<Buffe
     return undefined;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+// Looks up each requested layer's human-readable title via GetCapabilities,
+// so the info box on each page can show e.g. "Solo Urbano" instead of the
+// raw technical layer name. Best-effort: falls back to an empty map (and so
+// to the raw names) if the geoportal's capabilities can't be fetched.
+async function fetchLayerTitles(baseUrl: string, layerNames: string[]): Promise<Map<string, string>> {
+  try {
+    const layers = await fetchWmsLayers(baseUrl);
+    const titles = new Map<string, string>();
+    for (const layerName of layerNames) {
+      const title = layers.find((layer) => layer.name === layerName)?.title;
+      if (title) titles.set(layerName, title);
+    }
+    return titles;
+  } catch {
+    return new Map();
   }
 }
