@@ -49,7 +49,7 @@ export const dynamic = "force-dynamic";
 // Next.js extracts it via static analysis at build time, so it can't read
 // process.env here — see PDM_EXTRATO_MAX_DURATION below for the runtime
 // budget this route actually enforces on itself.
-export const maxDuration = 1800;
+export const maxDuration = 300;
 
 // Runtime budget this route gives itself before giving up and returning a
 // 504, independent of the platform-level maxDuration above. Defaults to 300s;
@@ -57,7 +57,7 @@ export const maxDuration = 1800;
 // geoportals during development).
 const ROUTE_TIMEOUT_SECONDS = Number(process.env.PDM_EXTRATO_MAX_DURATION) || 300;
 
-class RouteTimeoutError extends Error {}
+class RouteTimeoutError extends Error { }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
