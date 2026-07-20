@@ -225,15 +225,23 @@ async function composeLayerImage(params: {
       transparent: false,
       format: "image/png",
     }),
-    fetchLegendGraphic(source.baseUrl, layerName),
+    // Only GeoServer-backed vector services return a real per-category
+    // legend from GetLegendGraphic; for the DGT/SNIT raster services it's
+    // just a generic placeholder swatch, so skip it and point to the
+    // static legend doc(s) in the info box instead — see PDM_SOURCES.
+    source.hasLegend ? fetchLegendGraphic(source.baseUrl, layerName) : Promise.resolve(undefined),
   ]);
+
+  const legendLines = !source.hasLegend
+    ? (source.staticLegendUrls ?? []).map((url) => `Legenda: ${url}`)
+    : [];
 
   const infoSvg = infoOverlaySvg({
     width: canvas.width,
     height: canvas.height,
     metersPerPixel: canvas.metersPerPixel,
     title: "Extrato do PDM — Planta de Ordenamento",
-    lines: [project.name, source.planLabel, layerTitle],
+    lines: [project.name, source.planLabel, layerTitle, ...legendLines],
   });
 
   const composite = [

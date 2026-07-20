@@ -22,6 +22,14 @@ export type PdmSource =
       planLabel: string;
       baseUrl: string;
       layer: string;
+      // True only for GeoServer-backed vector services where GetLegendGraphic
+      // returns a real per-category legend, as opposed to a generic
+      // placeholder swatch.
+      hasLegend: boolean;
+      // Fallback static legend document(s) to reference instead, for
+      // services where the WMS legend is just a generic placeholder (all
+      // DGT/SNIT raster PDM services).
+      staticLegendUrls?: string[];
     }
   | {
       type: "unavailable";
@@ -36,6 +44,7 @@ export const PDM_SOURCES: Record<string, PdmSource> = {
     planLabel: "PDM Faro 2024 — Planta de Ordenamento (Modelo de Ordenamento do Território)",
     baseUrl: "http://mapas.cm-faro.pt/geoserver/pdm2024/wms",
     layer: "1_1_P_Ordenamento_MOT",
+    hasLegend: true,
   },
   Lisboa: {
     type: "wms",
@@ -43,6 +52,8 @@ export const PDM_SOURCES: Record<string, PdmSource> = {
     planLabel: "PDM Lisboa — Planta de Ordenamento (Qualificação do Espaço Urbano)",
     baseUrl: "https://servicos.dgterritorio.pt/SDISNITWMSPDM1_1106_1815_2/wmservice.aspx",
     layer: "Planta_de_Ordenamento_-_1_-_Qualificacao_do_Espaco_Urbano",
+    hasLegend: false, // Raster "Formato Matricial" service; every layer shares one generic "Default" style.
+    staticLegendUrls: ["https://websig.cm-lisboa.pt/MuniSIG/Anexos/anexolegPDM_vigor.pdf"],
   },
   Porto: {
     type: "wms",
@@ -50,6 +61,9 @@ export const PDM_SOURCES: Record<string, PdmSource> = {
     planLabel: "PDM Porto — Planta de Ordenamento (Qualificação do Solo)",
     baseUrl: "https://servicos.dgterritorio.pt/SDISNITWMSPDM1_1312_3027_3/wmservice.aspx",
     layer: "Planta_de_Ordenamento_-_1A_-_Qualificacao_do_Solo",
+    hasLegend: false,
+    // Full published sheet; legend is embedded in the sheet corner, not a standalone doc.
+    staticLegendUrls: ["https://pdm.cm-porto.pt/documents/84/i_02A_PO_CQS_Pub.pdf"],
   },
   Coimbra: {
     type: "wms",
@@ -57,6 +71,8 @@ export const PDM_SOURCES: Record<string, PdmSource> = {
     planLabel: "PDM Coimbra — Planta de Ordenamento (Classificação e Qualificação do Solo)",
     baseUrl: "https://servicos.dgterritorio.pt/SDISNITWMSPDM1_0603_2672_2/wmservice.aspx",
     layer: "Planta_de_Ordenamento_-_01_01_-_Classificacao_e_Qualificacao_do_Solo",
+    hasLegend: false,
+    staticLegendUrls: ["https://www.cm-coimbra.pt/wp-content/uploads/2022/02/1_1_Classificacao_qualificacao_solo.pdf"],
   },
   "Peso da Régua": {
     type: "wms",
@@ -64,6 +80,13 @@ export const PDM_SOURCES: Record<string, PdmSource> = {
     planLabel: "PDM Peso da Régua — Planta de Ordenamento",
     baseUrl: "https://servicos.dgterritorio.pt/sdisnitWMSPDM1_1708_257_2/wmservice.aspx",
     layer: "Planta_de_Ordenamento",
+    hasLegend: false,
+    // Large-scale plan split into tiled sheets; legend embedded in each sheet corner.
+    staticLegendUrls: [
+      "https://www.cm-pesoregua.pt/cmpesodaregua/uploads/document/file/82/02_ordenamentoa.PDF",
+      "https://www.cm-pesoregua.pt/cmpesodaregua/uploads/document/file/84/02_ordenamentob.PDF",
+      "https://www.cm-pesoregua.pt/cmpesodaregua/uploads/document/file/83/02_ordenamentoc.PDF",
+    ],
   },
 };
 
